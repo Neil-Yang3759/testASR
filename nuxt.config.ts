@@ -1,3 +1,4 @@
+import { defineNuxtConfig } from 'nuxt/config';
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
@@ -13,7 +14,9 @@ export default defineNuxtConfig({
   ],
   runtimeConfig: {
     public: {
-      apiBaseUrl: import.meta.env.API_BASE_URL || 'https://isp-poc.asr.t-mchat.com'
+      apiBaseUrl: import.meta.env.API_BASE_URL || '',
+      account: import.meta.env.ACCOUNT || '',
+      password: import.meta.env.PASSWORD || ''
     }
   },
   ssr: false, // 設定為SPA模式

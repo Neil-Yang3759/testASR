@@ -84,14 +84,16 @@ import { ref } from 'vue'
 import { useAuthStore } from '~/stores/auth'
 import { useRouter } from 'vue-router'
 
+const runtimeConfig = useRuntimeConfig()
 const authStore = useAuthStore()
 const router = useRouter()
 
-const apiEndpoint = ref('https://isp-poc.asr.t-mchat.com')
+const { apiBaseUrl, account, password } = runtimeConfig.public
+const apiEndpoint = ref(apiBaseUrl)
 const credentials = ref({
-  username: 'penpowerunser',
-  password: 'penpowerUser0935',
-  rememberMe: 1,
+  username: account,
+  password: password,
+  rememberMe: true,
 })
 const isLoading = ref(false)
 const error = ref('')
