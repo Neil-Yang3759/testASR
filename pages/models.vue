@@ -11,12 +11,12 @@
                 <th
                   class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase"
                 >
-                  模型名稱
+                  模型代號
                 </th>
                 <th
                   class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase"
                 >
-                  顯示名稱
+                  模型名稱
                 </th>
                 <th
                   class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase"
@@ -170,6 +170,9 @@
 </template>
 
 <script setup>
+definePageMeta({
+  middleware: 'auth',
+})
 import { ref, onMounted } from 'vue'
 import { useApiClient } from '~/composables/useApiClient'
 

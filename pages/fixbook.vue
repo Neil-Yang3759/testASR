@@ -131,6 +131,9 @@
 </template>
 
 <script setup>
+definePageMeta({
+  middleware: 'auth',
+})
 import { ref, onMounted } from 'vue'
 import { useApiClient } from '~/composables/useApiClient'
 

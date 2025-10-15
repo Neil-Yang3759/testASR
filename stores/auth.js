@@ -50,6 +50,7 @@ export const useAuthStore = defineStore('auth', {
           console.error('登出失敗:', error)
         }
       }
+      console.log('logout success')
 
       this.token = null
       this.user = null
@@ -60,6 +61,7 @@ export const useAuthStore = defineStore('auth', {
         localStorage.removeItem('api_endpoint')
         localStorage.removeItem('auth_user')
       }
+      navigateTo('/')
     },
 
     initializeAuth() {

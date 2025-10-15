@@ -2,24 +2,24 @@ import { useAuthStore } from '~/stores/auth'
 
 export const useApiClient = () => {
   const authStore = useAuthStore()
-  
+
   const apiCall = async (path, method = 'GET', body = null, params = {}) => {
     const url = new URL(`${authStore.apiEndpoint}${path}`)
-    
+
     // 添加查詢參數
-    Object.keys(params).forEach(key => {
+    Object.keys(params).forEach((key) => {
       if (params[key] !== undefined && params[key] !== '') {
         url.searchParams.append(key, params[key])
       }
     })
-    
+
     const options = {
       method,
       headers: {
-        Authorization: `Bearer ${authStore.token}`
-      }
+        Authorization: `Bearer ${authStore.token}`,
+      },
     }
-    
+
     if (body) {
       if (body instanceof FormData) {
         options.body = body
@@ -28,16 +28,22 @@ export const useApiClient = () => {
         options.body = JSON.stringify(body)
       }
     }
-    
+
     const response = await fetch(url.toString(), options)
+
+    if (response.status === 401) {
+      authStore.logout()
+      throw { status: data.code, message: '未授權，請重新登入' }
+    }
+
     const data = await response.json()
-    
-    if (data.code !== 200) {
+
+    if (data.code !== 200 && data.code !== 202) {
       throw { status: data.code, message: data.error || '請求失敗' }
     }
-    
+
     return data
   }
-  
+
   return { apiCall }
 }

@@ -6,7 +6,7 @@
         <div class="flex space-x-2">
           <select
             v-model="filters.taskStatus"
-            class="px-3 py-2 border rounded-md"
+            class="px-3 py-2 border rounded-md cursor-pointer disabled:cursor-not-allowed"
           >
             <option value="all">全部狀態</option>
             <option value="ongoing">進行中</option>
@@ -122,7 +122,7 @@
           <button
             @click="currentPage--"
             :disabled="currentPage === 0"
-            class="cursor-pointer px-3 py-1 border rounded-md disabled:opacity-50"
+            class="cursor-pointer disabled:cursor-not-allowed px-3 py-1 border rounded-md disabled:opacity-50"
           >
             上一頁
           </button>
@@ -130,7 +130,7 @@
           <button
             @click="currentPage++"
             :disabled="(currentPage + 1) * pageSize >= totalCount"
-            class="cursor-pointer px-3 py-1 border rounded-md disabled:opacity-50"
+            class="cursor-pointer disabled:cursor-not-allowed px-3 py-1 border rounded-md disabled:opacity-50"
           >
             下一頁
           </button>
@@ -151,10 +151,16 @@
           <div><strong>ID:</strong> {{ selectedTask.id }}</div>
           <div><strong>標題:</strong> {{ selectedTask.title }}</div>
           <div><strong>描述:</strong> {{ selectedTask.description }}</div>
+
           <div>
             <strong>狀態:</strong> {{ getStatusText(selectedTask.status) }}
           </div>
           <div><strong>進度:</strong> {{ selectedTask.progress }}%</div>
+          <div><strong>聲音通道:</strong> {{ selectedTask.audioChannel }}</div>
+          <div><strong>聲音人數:</strong> {{ selectedTask.speakerNum }}</div>
+          <div>
+            <strong>處理時間:</strong> {{ selectedTask.processTime }} 秒
+          </div>
           <div><strong>模型:</strong> {{ selectedTask.modelDisplayName }}</div>
           <div>
             <strong>音訊長度:</strong> {{ selectedTask.audioLength }} 秒
@@ -167,6 +173,13 @@
           </div>
           <div v-if="selectedTask.resultComment">
             <strong>註記:</strong> {{ selectedTask.resultComment }}
+          </div>
+          <div>
+            <strong>到期時間:</strong>
+            {{ formatDate(selectedTask.taskExpiredTime) }}
+          </div>
+          <div>
+            <strong>上傳檔案名稱:</strong> {{ selectedTask.uploadedFileName }}
           </div>
         </div>
         <button
@@ -181,9 +194,14 @@
 </template>
 
 <script setup>
+definePageMeta({
+  middleware: 'auth',
+})
 import { ref, onMounted, watch } from 'vue'
 import { useApiClient } from '~/composables/useApiClient'
+import { useAuthStore } from '~/stores/auth'
 
+const authStore = useAuthStore()
 const { apiCall } = useApiClient()
 
 const tasks = ref([])
@@ -223,8 +241,19 @@ const fetchTasks = async () => {
   }
 }
 
-const viewTask = (task) => {
-  selectedTask.value = task
+const fetchTaskDetail = async (task) => {
+  try {
+    const response = await apiCall(`/api/v1/subtitle/tasks/${task.id}`, 'GET')
+    return response || []
+  } catch (error) {
+    console.error('獲取任務資料失敗:', error)
+  }
+}
+
+const viewTask = async (task) => {
+  const result = await fetchTaskDetail(task)
+  console.log(result.data)
+  selectedTask.value = result.data[0]
 }
 
 const cancelTask = async (id) => {
@@ -258,17 +287,53 @@ const downloadFiles = async (task) => {
   ]
   for (const type of types) {
     try {
-      const response = await apiCall(
-        `/api/v1/subtitle/tasks/${task.id}/file-path?target=${type}`,
-        'GET'
-      )
-      if (response.data?.url) {
-        window.open(response.data.url, '_blank')
+      const options = {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${authStore.token}`,
+        },
+      }
+      const path = `/api/v1/subtitle/tasks/${task.id}/file?target=${type}`
+      const url = new URL(`${authStore.apiEndpoint}${path}`)
+      const response = await fetch(url.toString(), options)
+      if (!response.ok) {
+        throw new Error(`網路回應錯誤: ${response.statusText}`)
+      }
+      try {
+        const blob = await response.blob()
+        const blobUrl = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.style.display = 'none' // 讓它在畫面上不可見
+        link.href = blobUrl
+        link.download = task.title // 設定下載的檔案名稱
+        document.body.appendChild(link) // 需要先加到 DOM 中才能點擊
+        link.click()
+
+        // 步驟 6: 清理，移除標籤並釋放 URL
+        document.body.removeChild(link)
+        URL.revokeObjectURL(blobUrl)
+      } catch (error) {
+        console.error(`下載 ${type} 檔案時發生錯誤:', error`)
+        alert('下載失敗！')
       }
     } catch (error) {
-      console.log(`${type} 不存在`)
+      console.log(`${error}, ${type} 不存在`)
     }
   }
+
+  // for (const type of types) {
+  //   try {
+  //     const response = await apiCall(
+  //       `/api/v1/subtitle/tasks/${task.id}/file-path?target=${type}`,
+  //       'GET'
+  //     )
+  //     if (response.data?.url) {
+  //       window.open(response.data.url, '_blank')
+  //     }
+  //   } catch (error) {
+  //     console.log(`${type} 不存在`)
+  //   }
+  // }
 }
 
 const canCancel = (status) => {
