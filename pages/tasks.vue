@@ -106,13 +106,31 @@
                     @click="deleteTask(task.id)"
                     class="cursor-pointer text-pink-600 hover:text-pink-700"
                   >
-                    刪除
+                    {{ deletingTaskIds.has(task.id) ? '刪除中...' : '刪除' }}
                   </button>
                 </div>
               </td>
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- 成功/錯誤訊息 -->
+      <div v-if="message" class="mt-4">
+        <div
+          :class="[
+            'p-4 rounded-md',
+            messageType === 'success'
+              ? 'bg-green-50 text-green-800 border border-green-200'
+              : 'bg-red-50 text-red-800 border border-red-200',
+          ]"
+        >
+          <div class="flex items-center">
+            <span v-if="messageType === 'success'" class="mr-2">✓</span>
+            <span v-else class="mr-2">✕</span>
+            <span>{{ message }}</span>
+          </div>
+        </div>
       </div>
 
       <!-- 分頁控制 -->
@@ -126,7 +144,9 @@
           >
             上一頁
           </button>
-          <span class="px-3 py-1">第 {{ currentPage + 1 }} 頁</span>
+          <span class="px-3 py-1"
+            >第 {{ currentPage + 1 }} / {{ totalPages }} 頁</span
+          >
           <button
             @click="currentPage++"
             :disabled="(currentPage + 1) * pageSize >= totalCount"
@@ -207,11 +227,15 @@ const { apiCall } = useApiClient()
 const tasks = ref([])
 const totalCount = ref(0)
 const currentPage = ref(0)
+const totalPages = ref(0)
 const pageSize = ref(10)
 const filters = ref({
   taskStatus: 'all',
 })
 const selectedTask = ref(null)
+const deletingTaskIds = ref(new Set())
+const message = ref('')
+const messageType = ref('')
 
 const fetchTasks = async () => {
   try {
@@ -236,6 +260,7 @@ const fetchTasks = async () => {
       params
     )
     totalCount.value = countResponse.data[0]?.total || 0
+    totalPages.value = Math.ceil(totalCount.value / pageSize.value)
   } catch (error) {
     console.error('獲取任務列表失敗:', error)
   }
@@ -268,22 +293,52 @@ const cancelTask = async (id) => {
 }
 
 const deleteTask = async (id) => {
-  if (confirm('確定要刪除此任務嗎？')) {
-    try {
-      await apiCall(`/api/v1/subtitle/tasks/${id}`, 'DELETE')
-      fetchTasks()
-    } catch (error) {
-      console.error('刪除任務失敗:', error)
-    }
+  if (!confirm('確定要刪除此任務嗎？此操作無法復原。')) {
+    return
+  }
+
+  deletingTaskIds.value.add(id)
+  message.value = ''
+
+  try {
+    await apiCall(`/api/v1/subtitle/tasks/${id}`, 'DELETE')
+
+    // 顯示成功訊息
+    message.value = `任務 ID ${id} 已成功刪除`
+    messageType.value = 'success'
+
+    // 從當前列表中移除該任務（優化用戶體驗）
+    tasks.value = tasks.value.filter((task) => task.id !== id)
+    totalCount.value = Math.max(0, totalCount.value - 1)
+
+    // 3秒後清除訊息
+    setTimeout(() => {
+      message.value = ''
+    }, 3000)
+
+    // 重新載入列表以確保數據同步
+    await fetchTasks()
+  } catch (error) {
+    console.error('刪除任務失敗:', error)
+    message.value = `刪除任務失敗: ${error.message || '未知錯誤'}`
+    messageType.value = 'error'
+
+    // 5秒後清除錯誤訊息
+    setTimeout(() => {
+      message.value = ''
+    }, 5000)
+  } finally {
+    deletingTaskIds.value.delete(id)
   }
 }
 
 const downloadFiles = async (task) => {
+  // https://isp-poc.asr.t-mchat.com/api/v1/subtitle/tasks/162301/extra-file-path?targetType=dia.regular.txt&mergeSpeaker=0
   // 實作檔案下載邏輯
   const types = [
     'resultSubtitleFilePath',
-    'resultScriptFilePath',
-    'resultAudioFilePath',
+    // 'resultScriptFilePath',
+    // 'resultAudioFilePath',
   ]
   for (const type of types) {
     try {
