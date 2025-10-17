@@ -1,6 +1,7 @@
 <template>
   <div class="max-w-7xl mx-auto px-4 py-8 pt-20">
     <div class="bg-white rounded-lg shadow p-6">
+      <!-- head bar -->
       <div class="flex justify-between items-center mb-6">
         <h2 class="text-xl font-bold">任務列表</h2>
         <div class="flex space-x-2">
@@ -83,14 +84,22 @@
               <td class="px-6 py-4 whitespace-nowrap text-sm">
                 <div class="flex space-x-2">
                   <button
-                    @click="viewTask(task)"
-                    class="cursor-pointer text-pink-600 hover:text-pink-700"
+                    @mouseenter="showTaskDetail($event, task)"
+                    @mouseout="hideTaskDetail"
+                    class="cursor-pointer text-pink-600 hover:text-pink-700 relative detail-button"
+                  >
+                    詳情
+                  </button>
+                  <button
+                    v-if="task.status === 3"
+                    @click="getSubtitleJson(task)"
+                    class="cursor-pointer text-pink-600 hover:text-pink-700 relative"
                   >
                     檢視
                   </button>
                   <button
                     v-if="task.status === 3"
-                    @click="downloadFiles(task)"
+                    @click="downloadFullFile(task)"
                     class="cursor-pointer text-green-600 hover:text-green-800"
                   >
                     下載
@@ -113,6 +122,45 @@
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- Tooltip 顯示任務詳情 -->
+      <div
+        v-if="hoveredTask"
+        :style="tooltipStyle"
+        class="fixed bg-white rounded-lg shadow-xl border border-gray-200 p-4 max-w-md z-50 pointer-events-none"
+        style="box-shadow: 3px 3px 2px black"
+      >
+        <div class="space-y-1 text-xs">
+          <div><strong>ID:</strong> {{ hoveredTask.id }}</div>
+          <div><strong>標題:</strong> {{ hoveredTask.title }}</div>
+          <div><strong>描述:</strong> {{ hoveredTask.description }}</div>
+          <div>
+            <strong>狀態:</strong> {{ getStatusText(hoveredTask.status) }}
+          </div>
+          <div><strong>進度:</strong> {{ hoveredTask.progress }}%</div>
+          <div><strong>聲音通道:</strong> {{ hoveredTask.audioChannel }}</div>
+          <div><strong>聲音人數:</strong> {{ hoveredTask.speakerNum }}</div>
+          <div><strong>處理時間:</strong> {{ hoveredTask.processTime }} 秒</div>
+          <div><strong>模型:</strong> {{ hoveredTask.modelDisplayName }}</div>
+          <div><strong>音訊長度:</strong> {{ hoveredTask.audioLength }} 秒</div>
+          <div>
+            <strong>創建時間:</strong> {{ formatDate(hoveredTask.createTime) }}
+          </div>
+          <div v-if="hoveredTask.errorCode">
+            <strong>錯誤碼:</strong> {{ hoveredTask.errorCode }}
+          </div>
+          <div v-if="hoveredTask.resultComment">
+            <strong>註記:</strong> {{ hoveredTask.resultComment }}
+          </div>
+          <div>
+            <strong>到期時間:</strong>
+            {{ formatDate(hoveredTask.taskExpiredTime) }}
+          </div>
+          <div>
+            <strong>上傳檔案名稱:</strong> {{ hoveredTask.uploadedFileName }}
+          </div>
+        </div>
       </div>
 
       <!-- 成功/錯誤訊息 -->
@@ -236,6 +284,8 @@ const selectedTask = ref(null)
 const deletingTaskIds = ref(new Set())
 const message = ref('')
 const messageType = ref('')
+const hoveredTask = ref(null)
+const tooltipStyle = ref({})
 
 const fetchTasks = async () => {
   try {
@@ -277,8 +327,23 @@ const fetchTaskDetail = async (task) => {
 
 const viewTask = async (task) => {
   const result = await fetchTaskDetail(task)
-  console.log(result.data)
   selectedTask.value = result.data[0]
+}
+
+const showTaskDetail = async (event, task) => {
+  const result = await fetchTaskDetail(task)
+  hoveredTask.value = result.data[0]
+
+  // 計算 tooltip 位置
+  const rect = event.target.getBoundingClientRect()
+  tooltipStyle.value = {
+    top: `${rect.top / 2 + window.scrollY}px`,
+    right: `${window.innerWidth - rect.right + rect.width * 2 + window.scrollX}px`,
+  }
+}
+
+const hideTaskDetail = () => {
+  hoveredTask.value = null
 }
 
 const cancelTask = async (id) => {
@@ -332,8 +397,45 @@ const deleteTask = async (id) => {
   }
 }
 
+const getSubtitleJson = async (task) => {
+  // 導航到字幕頁面
+  navigateTo(
+    `/subtitle?taskId=${task.id}&title=${encodeURIComponent(task.title || '')}`
+  )
+}
+
+const downloadFullFile = async (task) => {
+  try {
+    const path = `/api/v1/subtitle/tasks/${task.id}/extra-file-path?targetType=dia.regular.txt&mergeSpeaker=0`
+    let response = await apiCall(path)
+
+    response = await apiCall(
+      response.data[0].url.toString(),
+      'GET',
+      null,
+      null,
+      'full'
+    )
+
+    console.log(response)
+
+    const blob = await response.blob()
+    const blobUrl = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.style.display = 'none' // 讓它在畫面上不可見
+    link.href = blobUrl
+    link.download = `API_${task.title}(${task.id})` // 設定下載的檔案名稱
+    document.body.appendChild(link) // 需要先加到 DOM 中才能點擊
+    link.click()
+    // 步驟 6: 清理，移除標籤並釋放 URL
+    document.body.removeChild(link)
+    URL.revokeObjectURL(blobUrl)
+  } catch (error) {
+    console.error('下載完整檔案失敗:', error)
+  }
+}
+
 const downloadFiles = async (task) => {
-  // https://isp-poc.asr.t-mchat.com/api/v1/subtitle/tasks/162301/extra-file-path?targetType=dia.regular.txt&mergeSpeaker=0
   // 實作檔案下載邏輯
   const types = [
     'resultSubtitleFilePath',
@@ -342,18 +444,12 @@ const downloadFiles = async (task) => {
   ]
   for (const type of types) {
     try {
-      const options = {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${authStore.token}`,
-        },
-      }
       const path = `/api/v1/subtitle/tasks/${task.id}/file?target=${type}`
-      const url = new URL(`${authStore.apiEndpoint}${path}`)
-      const response = await fetch(url.toString(), options)
+      const response = await apiCall(path.toString())
       if (!response.ok) {
         throw new Error(`網路回應錯誤: ${response.statusText}`)
       }
+
       try {
         const blob = await response.blob()
         const blobUrl = URL.createObjectURL(blob)
@@ -372,23 +468,9 @@ const downloadFiles = async (task) => {
         alert('下載失敗！')
       }
     } catch (error) {
-      console.log(`${error}, ${type} 不存在`)
+      console.warn(`${error}, ${type} 不存在`)
     }
   }
-
-  // for (const type of types) {
-  //   try {
-  //     const response = await apiCall(
-  //       `/api/v1/subtitle/tasks/${task.id}/file-path?target=${type}`,
-  //       'GET'
-  //     )
-  //     if (response.data?.url) {
-  //       window.open(response.data.url, '_blank')
-  //     }
-  //   } catch (error) {
-  //     console.log(`${type} 不存在`)
-  //   }
-  // }
 }
 
 const canCancel = (status) => {

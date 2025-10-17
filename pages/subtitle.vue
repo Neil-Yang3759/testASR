@@ -1,0 +1,295 @@
+<template>
+  <div class="max-w-7xl mx-auto px-4 py-8 pt-20">
+    <div class="bg-white rounded-lg shadow p-6">
+      <!-- Header -->
+      <div class="flex justify-between items-center mb-6">
+        <div>
+          <h2 class="text-xl font-bold">Subtitle Viewer</h2>
+          <p class="text-sm text-gray-600 mt-1">Task ID: {{ taskId }}</p>
+          <p v-if="taskTitle" class="text-sm text-gray-600">
+            Title: {{ taskTitle }}
+          </p>
+        </div>
+        <button
+          @click="goBack"
+          class="cursor-pointer bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700"
+        >
+          Go Back
+        </button>
+      </div>
+
+      <!-- Loading State -->
+      <div v-if="loading" class="text-center py-12">
+        <div
+          class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-pink-600"
+        ></div>
+        <p class="mt-4 text-gray-600">Loading subtitle data...</p>
+      </div>
+
+      <!-- Error State -->
+      <div
+        v-else-if="error"
+        class="bg-red-50 border border-red-200 rounded-md p-4"
+      >
+        <div class="flex items-center">
+          <span class="text-red-800 mr-2">Error</span>
+          <span class="text-red-800">{{ error }}</span>
+        </div>
+      </div>
+
+      <!-- Subtitle Content -->
+      <div v-else-if="subtitles && subtitles.length > 0">
+        <!-- Stats Summary -->
+        <div class="bg-gray-50 rounded-md p-4 mb-6">
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+              <span class="text-gray-600">Total Segments: </span>
+              <span class="font-bold">{{ subtitles.length }}</span>
+            </div>
+            <div>
+              <span class="text-gray-600">Duration: </span>
+              <span class="font-bold">{{ totalDuration }}</span>
+            </div>
+            <div v-if="speakerCount > 0">
+              <span class="text-gray-600">Speakers: </span>
+              <span class="font-bold">{{ speakerCount }}</span>
+            </div>
+            <div>
+              <span class="text-gray-600">Characters: </span>
+              <span class="font-bold">{{ totalWords }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filter/Search Options -->
+        <div class="mb-4 flex gap-2">
+          <input
+            v-model="searchText"
+            type="text"
+            placeholder="Search subtitles..."
+            class="flex-1 px-3 py-2 border rounded-md"
+          />
+          <select
+            v-if="speakerCount > 0"
+            v-model="filterSpeaker"
+            class="px-3 py-2 border rounded-md"
+          >
+            <option value="">All Speakers</option>
+            <option
+              v-for="speaker in uniqueSpeakers"
+              :key="speaker"
+              :value="speaker"
+            >
+              {{ speaker }}
+            </option>
+          </select>
+        </div>
+
+        <!-- Subtitle List -->
+        <div class="space-y-3">
+          <div
+            v-for="(subtitle, index) in filteredSubtitles"
+            :key="index"
+            class="border rounded-md p-4 hover:bg-gray-50 transition-colors"
+          >
+            <div class="flex items-start justify-between mb-2">
+              <div class="flex items-center gap-3">
+                <span class="text-sm font-bold text-gray-500"
+                  >#{{ subtitle.id }}</span
+                >
+                <span
+                  class="text-xs bg-pink-100 text-pink-700 px-2 py-1 rounded"
+                >
+                  {{ subtitle.startTime }} → {{ subtitle.endTime }}
+                </span>
+                <span class="text-xs text-gray-500">
+                  ({{
+                    calculateDuration(subtitle.startTime, subtitle.endTime)
+                  }}s)
+                </span>
+                <span
+                  v-if="subtitle.speaker"
+                  class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded"
+                >
+                  {{ subtitle.speaker }}
+                </span>
+              </div>
+            </div>
+            <div class="text-gray-800">
+              <p
+                class="leading-relaxed"
+                v-html="highlightText(subtitle.text)"
+              ></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Empty State after filtering -->
+        <div
+          v-if="filteredSubtitles.length === 0"
+          class="text-center py-12 text-gray-500"
+        >
+          No subtitles found matching your criteria
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div v-else class="text-center py-12 text-gray-500">
+        No subtitle data available for this task
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+definePageMeta({
+  middleware: 'auth',
+})
+
+import { ref, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '~/stores/auth'
+
+const { apiCall } = useApiClient()
+const route = useRoute()
+const router = useRouter()
+const authStore = useAuthStore()
+
+const taskId = ref(route.query.taskId)
+const taskTitle = ref(decodeURIComponent(route.query.title || ''))
+const subtitles = ref([])
+const loading = ref(true)
+const error = ref('')
+const searchText = ref('')
+const filterSpeaker = ref('')
+
+// Fetch subtitle data
+const fetchSubtitleData = async () => {
+  try {
+    loading.value = true
+    error.value = ''
+
+    const options = {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${authStore.token}`,
+      },
+    }
+
+    const path = `/api/v1/subtitle/tasks/${taskId.value}/subtitle-json?editor=1&category=dia`
+    const response = await apiCall(path)
+
+    // Handle different possible response formats
+    let rawData = []
+    if (Array.isArray(response)) {
+      rawData = response
+    } else if (response.data && Array.isArray(response.data)) {
+      rawData = response.data
+    } else if (response.result && Array.isArray(response.result)) {
+      rawData = response.result
+    } else {
+      console.error('Unexpected data format:', response)
+      error.value = 'Unable to parse subtitle data format'
+      return
+    }
+
+    // Transform data to consistent format
+    subtitles.value = rawData.map((item) => ({
+      id: item.id,
+      speaker: item.speaker,
+      startTime: item.startTime,
+      endTime: item.endTime,
+      text: item.text,
+    }))
+  } catch (err) {
+    console.error('Failed to fetch subtitle data:', err)
+    error.value = `Failed to load subtitles: ${err.message}`
+  } finally {
+    loading.value = false
+  }
+}
+
+// Computed properties
+const filteredSubtitles = computed(() => {
+  let filtered = subtitles.value
+
+  // Filter by speaker
+  if (filterSpeaker.value) {
+    filtered = filtered.filter((s) => s.speaker === filterSpeaker.value)
+  }
+
+  // Filter by search text
+  if (searchText.value) {
+    const search = searchText.value.toLowerCase()
+    filtered = filtered.filter((s) => s.text?.toLowerCase().includes(search))
+  }
+
+  return filtered
+})
+
+const uniqueSpeakers = computed(() => {
+  const speakers = new Set()
+  subtitles.value.forEach((s) => {
+    if (s.speaker) speakers.add(s.speaker)
+  })
+  return Array.from(speakers).sort()
+})
+
+const speakerCount = computed(() => uniqueSpeakers.value.length)
+
+const totalDuration = computed(() => {
+  if (subtitles.value.length === 0) return '0:00'
+  const lastSubtitle = subtitles.value[subtitles.value.length - 1]
+  return lastSubtitle.endTime || '0:00'
+})
+
+const totalWords = computed(() => {
+  return subtitles.value.reduce((sum, s) => {
+    return sum + (s.text?.length || 0)
+  }, 0)
+})
+
+// Helper functions
+const timeToSeconds = (timeString) => {
+  // Convert "00:00:12.185" to seconds
+  if (!timeString) return 0
+  const parts = timeString.split(':')
+  const hours = parseInt(parts[0]) || 0
+  const minutes = parseInt(parts[1]) || 0
+  const seconds = parseFloat(parts[2]) || 0
+  return hours * 3600 + minutes * 60 + seconds
+}
+
+const calculateDuration = (startTime, endTime) => {
+  const start = timeToSeconds(startTime)
+  const end = timeToSeconds(endTime)
+  return (end - start).toFixed(1)
+}
+
+const highlightText = (text) => {
+  if (!searchText.value || !text) return text
+
+  const regex = new RegExp(`(${searchText.value})`, 'gi')
+  return text.replace(regex, '<mark class="bg-yellow-200">$1</mark>')
+}
+
+const goBack = () => {
+  router.push('/tasks')
+}
+
+onMounted(() => {
+  if (!taskId.value) {
+    error.value = 'Missing task ID'
+    loading.value = false
+    return
+  }
+  fetchSubtitleData()
+})
+</script>
+
+<style scoped>
+mark {
+  padding: 0 2px;
+  border-radius: 2px;
+}
+</style>
