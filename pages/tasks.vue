@@ -7,13 +7,15 @@
         <div class="flex space-x-2">
           <select
             v-model="filters.taskStatus"
-            class="px-3 py-2 border rounded-md cursor-pointer disabled:cursor-not-allowed"
+            class="px-3 py-2 border rounded-md cursor-pointer"
           >
             <option value="all">全部狀態</option>
             <option value="ongoing">進行中</option>
             <option value="succeeded">成功</option>
             <option value="failed">失敗</option>
             <option value="canceled">已取消</option>
+            <option value="processing">處理中</option>
+            <option value="standby">待處理</option>
           </select>
           <button
             @click="fetchTasks"
@@ -84,7 +86,7 @@
               <td class="px-6 py-4 whitespace-nowrap text-sm">
                 <div class="flex space-x-2">
                   <button
-                    @mouseenter="showTaskDetail($event, task)"
+                    @click="showTaskDetail($event, task)"
                     @mouseout="hideTaskDetail"
                     class="cursor-pointer text-pink-600 hover:text-pink-700 relative detail-button"
                   >
@@ -188,17 +190,19 @@
           <button
             @click="currentPage--"
             :disabled="currentPage === 0"
-            class="cursor-pointer disabled:cursor-not-allowed px-3 py-1 border rounded-md disabled:opacity-50"
+            class="cursor-pointer px-3 py-1 border rounded-md disabled:opacity-50"
           >
             上一頁
           </button>
           <span class="px-3 py-1"
-            >第 {{ currentPage + 1 }} / {{ totalPages }} 頁</span
+            >第
+            {{ currentPage + 1 }}
+            / {{ totalPages || 1 }} 頁</span
           >
           <button
             @click="currentPage++"
             :disabled="(currentPage + 1) * pageSize >= totalCount"
-            class="cursor-pointer disabled:cursor-not-allowed px-3 py-1 border rounded-md disabled:opacity-50"
+            class="cursor-pointer px-3 py-1 border rounded-md disabled:opacity-50"
           >
             下一頁
           </button>

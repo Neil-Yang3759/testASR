@@ -4,10 +4,10 @@
       <!-- Header -->
       <div class="flex justify-between items-center mb-6">
         <div>
-          <h2 class="text-xl font-bold">Subtitle Viewer</h2>
+          <h2 class="text-xl font-bold">逐字表</h2>
           <p class="text-sm text-gray-600 mt-1">Task ID: {{ taskId }}</p>
           <p v-if="taskTitle" class="text-sm text-gray-600">
-            Title: {{ taskTitle }}
+            Title: <span class="font-bold">{{ taskTitle }}</span>
           </p>
         </div>
         <button
@@ -39,83 +39,101 @@
 
       <!-- Subtitle Content -->
       <div v-else-if="subtitles && subtitles.length > 0">
-        <!-- Stats Summary -->
-        <div class="bg-gray-50 rounded-md p-4 mb-6">
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div>
-              <span class="text-gray-600">Total Segments: </span>
-              <span class="font-bold">{{ subtitles.length }}</span>
+        <div class="rounded-lg border-2 border-solid p-2 mb-4">
+          <!-- Stats Summary -->
+          <div class="bg-gray-50 rounded-md p-4 mb-6">
+            <audio
+              v-if="audioUrl"
+              ref="audioPlayer"
+              :src="audioUrl"
+              controls
+              class="w-full mb-5"
+              @timeupdate="onTimeUpdate"
+            ></audio>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div>
+                <span class="text-gray-600">Total Segments: </span>
+                <span class="font-bold">{{ subtitles.length }}</span>
+              </div>
+              <div>
+                <span class="text-gray-600">Duration: </span>
+                <span class="font-bold">{{ totalDuration }}</span>
+              </div>
+              <div v-if="speakerCount > 0">
+                <span class="text-gray-600">Speakers: </span>
+                <span class="font-bold">{{ speakerCount }}</span>
+              </div>
+              <div>
+                <span class="text-gray-600">Characters: </span>
+                <span class="font-bold">{{ totalWords }}</span>
+              </div>
             </div>
-            <div>
-              <span class="text-gray-600">Duration: </span>
-              <span class="font-bold">{{ totalDuration }}</span>
-            </div>
-            <div v-if="speakerCount > 0">
-              <span class="text-gray-600">Speakers: </span>
-              <span class="font-bold">{{ speakerCount }}</span>
-            </div>
-            <div>
-              <span class="text-gray-600">Characters: </span>
-              <span class="font-bold">{{ totalWords }}</span>
-            </div>
+          </div>
+
+          <!-- Filter/Search Options -->
+          <div class="mb-4 flex gap-2 flex-wrap">
+            <input
+              v-model="searchText"
+              type="text"
+              placeholder="Search subtitles..."
+              class="flex-1 px-3 py-2 border rounded-md"
+            />
+            <select
+              v-if="speakerCount > 0"
+              v-model="filterSpeaker"
+              class="px-3 py-2 border rounded-md cursor-pointer"
+            >
+              <option value="">All Speakers</option>
+              <option
+                v-for="speaker in uniqueSpeakers"
+                :key="speaker"
+                :value="speaker"
+              >
+                {{ speaker }}
+              </option>
+            </select>
           </div>
         </div>
 
-        <!-- Filter/Search Options -->
-        <div class="mb-4 flex gap-2">
-          <input
-            v-model="searchText"
-            type="text"
-            placeholder="Search subtitles..."
-            class="flex-1 px-3 py-2 border rounded-md"
-          />
-          <select
-            v-if="speakerCount > 0"
-            v-model="filterSpeaker"
-            class="px-3 py-2 border rounded-md"
-          >
-            <option value="">All Speakers</option>
-            <option
-              v-for="speaker in uniqueSpeakers"
-              :key="speaker"
-              :value="speaker"
-            >
-              {{ speaker }}
-            </option>
-          </select>
-        </div>
-
         <!-- Subtitle List -->
-        <div class="space-y-3">
+        <div class="space-y-3 overflow-auto max-h-[45vh]">
           <div
             v-for="(subtitle, index) in filteredSubtitles"
             :key="index"
-            class="border rounded-md p-4 hover:bg-gray-50 transition-colors"
+            class="border rounded-md p-4 transition-colors cursor-pointer"
+            :class="{
+              'bg-yellow-100 hover:bg-blue-500 hover:text-white ':
+                subtitle.id === currentSubtitleId,
+              'hover:bg-gray-100': subtitle.id !== currentSubtitleId,
+            }"
+            @click="seekTo(subtitle.startTime)"
           >
             <div class="flex items-start justify-between mb-2">
               <div class="flex items-center gap-3">
-                <span class="text-sm font-bold text-gray-500"
-                  >#{{ subtitle.id }}</span
-                >
+                <span class="text-sm font-bold">#{{ subtitle.id }}</span>
                 <span
                   class="text-xs bg-pink-100 text-pink-700 px-2 py-1 rounded"
                 >
                   {{ subtitle.startTime }} → {{ subtitle.endTime }}
                 </span>
-                <span class="text-xs text-gray-500">
+                <span class="text-xs">
                   ({{
                     calculateDuration(subtitle.startTime, subtitle.endTime)
                   }}s)
                 </span>
                 <span
                   v-if="subtitle.speaker"
-                  class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded"
+                  :class="[
+                    'text-xs px-2 py-1 rounded',
+                    getSpeakerColor(subtitle.speaker).bg,
+                    getSpeakerColor(subtitle.speaker).text,
+                  ]"
                 >
                   {{ subtitle.speaker }}
                 </span>
               </div>
             </div>
-            <div class="text-gray-800">
+            <div class=" ">
               <p
                 class="leading-relaxed"
                 v-html="highlightText(subtitle.text)"
@@ -162,6 +180,50 @@ const loading = ref(true)
 const error = ref('')
 const searchText = ref('')
 const filterSpeaker = ref('')
+const audioUrl = ref('')
+const speakerColors = ref({})
+
+const audioPlayer = ref(null)
+const currentSubtitleId = ref(null)
+
+const onTimeUpdate = () => {
+  if (!audioPlayer.value) return
+  const currentTime = audioPlayer.value.currentTime
+  for (const subtitle of subtitles.value) {
+    const startTime = timeToSeconds(subtitle.startTime)
+    const endTime = timeToSeconds(subtitle.endTime)
+    if (currentTime >= startTime && currentTime <= endTime) {
+      currentSubtitleId.value = subtitle.id
+      break
+    }
+  }
+}
+
+const seekTo = (time) => {
+  if (audioPlayer.value) {
+    audioPlayer.value.currentTime = timeToSeconds(time)
+    audioPlayer.value.play()
+  }
+}
+
+const tailwindColors = [
+  { bg: 'bg-blue-100', text: 'text-blue-700' },
+  { bg: 'bg-green-100', text: 'text-green-700' },
+  { bg: 'bg-yellow-100', text: 'text-yellow-700' },
+  { bg: 'bg-purple-100', text: 'text-purple-700' },
+  { bg: 'bg-orange-100', text: 'text-orange-700' },
+  { bg: 'bg-teal-100', text: 'text-teal-700' },
+]
+
+const getSpeakerColor = (speaker) => {
+  if (!speaker) return {}
+  if (!speakerColors.value[speaker]) {
+    const colorIndex =
+      Object.keys(speakerColors.value).length % tailwindColors.length
+    speakerColors.value[speaker] = tailwindColors[colorIndex]
+  }
+  return speakerColors.value[speaker]
+}
 
 // Fetch subtitle data
 const fetchSubtitleData = async () => {
@@ -277,6 +339,21 @@ const goBack = () => {
   router.push('/tasks')
 }
 
+// Fetch audio URL
+const fetchAudioUrl = async () => {
+  try {
+    const path = `/api/v1/subtitle/tasks/${taskId.value}/editor-resource?need_subtitle_content=0`
+    const response = await apiCall(path)
+
+    if (response.data && response.data.length > 0) {
+      audioUrl.value = `${response.data[0].audioUrl}?ticket=${response.data[0].audioTicket}`
+    }
+  } catch (err) {
+    console.error('Failed to fetch audio URL:', err)
+    error.value = `Failed to load audio URL: ${err.message}`
+  }
+}
+
 onMounted(() => {
   if (!taskId.value) {
     error.value = 'Missing task ID'
@@ -284,6 +361,7 @@ onMounted(() => {
     return
   }
   fetchSubtitleData()
+  fetchAudioUrl()
 })
 </script>
 
