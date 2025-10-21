@@ -92,14 +92,26 @@
                 {{ speaker }}
               </option>
             </select>
+            <button
+              @click="toggleFollow"
+              :class="[
+                'px-4 py-2 rounded-md',
+                followSubtitle
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-200 text-gray-700',
+              ]"
+            >
+              {{ followSubtitle ? 'Following' : 'Follow' }}
+            </button>
           </div>
         </div>
 
         <!-- Subtitle List -->
-        <div class="space-y-3 overflow-auto max-h-[45vh]">
+        <div class="space-y-3 overflow-auto max-h-[45vh]" ref="subtitleContainer">
           <div
             v-for="(subtitle, index) in filteredSubtitles"
             :key="index"
+            :data-subtitle-id="subtitle.id"
             class="border rounded-md p-4 transition-colors cursor-pointer"
             :class="{
               'bg-yellow-100 hover:bg-blue-500 hover:text-white ':
@@ -164,7 +176,7 @@ definePageMeta({
   middleware: 'auth',
 })
 
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '~/stores/auth'
 
@@ -185,6 +197,27 @@ const speakerColors = ref({})
 
 const audioPlayer = ref(null)
 const currentSubtitleId = ref(null)
+const followSubtitle = ref(true)
+
+const toggleFollow = () => {
+  followSubtitle.value = !followSubtitle.value
+}
+
+watch(currentSubtitleId, (newId) => {
+  if (followSubtitle.value && newId !== null) {
+    scrollToSubtitle(newId)
+  }
+})
+
+const scrollToSubtitle = (id) => {
+  const subtitleElement = document.querySelector(`[data-subtitle-id='${id}']`)
+  if (subtitleElement) {
+    subtitleElement.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    })
+  }
+}
 
 const onTimeUpdate = () => {
   if (!audioPlayer.value) return
