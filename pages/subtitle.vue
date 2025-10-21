@@ -95,19 +95,22 @@
             <button
               @click="toggleFollow"
               :class="[
-                'px-4 py-2 rounded-md',
+                ' rounded-full w-10 h-10 flex justify-center content-center flex-wrap',
                 followSubtitle
                   ? 'bg-blue-500 text-white'
                   : 'bg-gray-200 text-gray-700',
               ]"
             >
-              {{ followSubtitle ? 'Following' : 'Follow' }}
+              <UIcon name="i-lucide-arrow-down-to-dot" class="size-5" />
             </button>
           </div>
         </div>
 
         <!-- Subtitle List -->
-        <div class="space-y-3 overflow-auto max-h-[45vh]" ref="subtitleContainer">
+        <div
+          class="space-y-3 overflow-auto max-h-[45vh]"
+          ref="subtitleContainer"
+        >
           <div
             v-for="(subtitle, index) in filteredSubtitles"
             :key="index"

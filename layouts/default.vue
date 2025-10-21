@@ -65,6 +65,7 @@ const router = useRouter()
 const navigationTabs = [
   { name: '任務管理', path: '/tasks' },
   { name: '創建任務', path: '/create-task' },
+  { name: '創建多任務', path: '/create-multiple-tasks' }, // New entry
   { name: '模型管理', path: '/models' },
   { name: '勘誤表', path: '/fixbook' },
   { name: '操作記錄', path: '/audit' },
